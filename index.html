@@ -1,0 +1,148 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join Sabotage Game</title>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 50px; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+        .popover {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: white;
+            border: 1px solid black;
+            padding: 15px;
+            display: block;
+            text-align: left;
+        }
+        .popover label { display: block; margin-top: 8px; }
+        .active-session { display: none; }
+        .hidden { display: none; }
+        .status-indicator { font-size: 14px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div id="popover" class="popover">
+        <h3>Join Game</h3>
+        <label for="playerCode">Rejoin with Player Code</label>
+        <input type="text" id="playerCode" placeholder="Enter Player Code (Optional)" />
+        <hr>
+        <label for="gameId">New Player - Enter Game Code</label>
+        <input type="text" id="gameId" placeholder="Enter Game Code" />
+        <label for="playerName">Enter Your Name</label>
+        <input type="text" id="playerName" placeholder="Enter Your Name" />
+        <button id="joinGameBtn">Join</button>
+    </div>
+    <button id="popoverToggle">⚙️</button>
+    
+    <div id="activeSession" class="active-session">
+        <h2 id="playerDisplayName"></h2>
+        <p id="playerStatus"></p>
+        <button id="toggleBtn">Toggle On/Off</button>
+        <p class="status-indicator" id="connectionStatus">🟡 Checking...</p>
+    </div>
+    
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDJeg1QEZLM8itEj7HDgASKtgR3KUuz9Eo",
+            authDomain: "that-one-time.firebaseapp.com",
+            projectId: "that-one-time",
+            storageBucket: "that-one-time.firebasestorage.app",
+            messagingSenderId: "1055930974394",
+            appId: "1:1055930974394:web:ae28f8473bd2abe680c283",
+            measurementId: "G-6PTFWCKBJN"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        let playerDocRef;
+        let lastActivityCheck = Date.now();
+
+        function generateSimplePlayerCode() {
+            return "P" + Math.floor(1000 + Math.random() * 9000).toString();
+        }
+
+        async function reconnectPlayer() {
+            let storedPlayerCode = localStorage.getItem("playerCode");
+            if (storedPlayerCode) {
+                console.log("Attempting to reconnect with stored player code:", storedPlayerCode);
+                const existingPlayer = await db.collection("players").doc(storedPlayerCode).get();
+                if (existingPlayer.exists) {
+                    playerDocRef = db.collection("players").doc(storedPlayerCode);
+                    const playerData = existingPlayer.data();
+                    document.getElementById("playerDisplayName").innerText = playerData.name;
+                    document.getElementById("playerStatus").innerText = "Status: OFF";
+                    document.getElementById("toggleBtn").style.display = "inline";
+                    document.getElementById("popover").classList.add("hidden");
+                    document.getElementById("activeSession").style.display = "block";
+                    console.log("Reconnection successful.");
+                    setInterval(updateLastActive, 10000);
+                    setInterval(checkConnectionStatus, 5000);
+                } else {
+                    console.log("Stored player code not found in database. Clearing local storage.");
+                    localStorage.removeItem("playerCode");
+                }
+            }
+        }
+
+        async function updateLastActive() {
+            if (playerDocRef) {
+                const timestamp = Date.now();
+                await playerDocRef.update({ lastActive: timestamp });
+                lastActivityCheck = timestamp;
+                console.log("Updated lastActive timestamp for player:", timestamp);
+            }
+        }
+
+        async function checkConnectionStatus() {
+            if (!playerDocRef) return;
+            const playerDoc = await playerDocRef.get();
+            const playerData = playerDoc.data();
+            if (!playerData || !playerData.lastActive) return;
+            
+            const timeSinceLastActivity = Date.now() - playerData.lastActive;
+            const statusIndicator = document.getElementById("connectionStatus");
+
+            console.log("Checking connection status. Last active:", playerData.lastActive, "Time since last active:", timeSinceLastActivity);
+            
+            if (timeSinceLastActivity < 30000) {
+                statusIndicator.innerText = "🟢 Active";
+            } else if (timeSinceLastActivity < 60000) {
+                statusIndicator.innerText = "🟡 Dormant";
+            } else {
+                statusIndicator.innerText = "🔴 Disconnected";
+            }
+        }
+
+        document.getElementById("joinGameBtn").addEventListener("click", async () => {
+            let playerCode = document.getElementById("playerCode").value.trim();
+            const gameId = document.getElementById("gameId").value.trim();
+            const playerName = document.getElementById("playerName").value.trim();
+
+            if (!playerCode) {
+                playerCode = generateSimplePlayerCode();
+            }
+            
+            playerDocRef = db.collection("players").doc(playerCode);
+            await playerDocRef.set({ gameId, name: playerName, status: false, lastActive: Date.now() });
+            localStorage.setItem("playerCode", playerCode);
+            console.log("Player registered with code:", playerCode);
+            
+            document.getElementById("playerDisplayName").innerText = playerName;
+            document.getElementById("playerStatus").innerText = "Status: OFF";
+            document.getElementById("toggleBtn").style.display = "inline";
+            document.getElementById("popover").classList.add("hidden");
+            document.getElementById("activeSession").style.display = "block";
+            setInterval(updateLastActive, 10000);
+            setInterval(checkConnectionStatus, 5000);
+        });
+
+        window.onload = reconnectPlayer;
+    </script>
+</body>
+</html>

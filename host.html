@@ -1,0 +1,114 @@
+<!-- host.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Host Sabotage Game</title>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore-compat.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin: 50px; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+        .status-indicator { font-size: 14px; margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Host Sabotage Game</h1>
+    <button id="createGameBtn">Create Game</button>
+    <button id="existingGameBtn">Existing Game</button>
+    <input type="text" id="existingGameInput" placeholder="Enter Game Code" style="display:none;" />
+    <button id="joinExistingGameBtn" style="display:none;">Join as Host</button>
+    <button id="endGameBtn" style="display:none;">End Game</button>
+    <p>Game Code: <span id="gameCode"></span></p>
+    
+    <h2>Players in Game</h2>
+    <ul id="playerList"></ul>
+    
+    <p id="hostStatus">Host Status: 🟡 Checking...</p>
+    
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDJeg1QEZLM8itEj7HDgASKtgR3KUuz9Eo",
+            authDomain: "that-one-time.firebaseapp.com",
+            projectId: "that-one-time",
+            storageBucket: "that-one-time.firebasestorage.app",
+            messagingSenderId: "1055930974394",
+            appId: "1:1055930974394:web:ae28f8473bd2abe680c283",
+            measurementId: "G-6PTFWCKBJN"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        let currentGameId;
+
+        async function updateHostStatus() {
+            console.log("Host is checking Firestore for updates...");
+            document.getElementById("hostStatus").innerText = "Host Status: 🟢 Active";
+            setTimeout(() => {
+                document.getElementById("hostStatus").innerText = "Host Status: 🟡 Dormant";
+            }, 30000);
+            setTimeout(() => {
+                document.getElementById("hostStatus").innerText = "Host Status: 🔴 Disconnected";
+            }, 60000);
+        }
+
+        function listenForPlayers(gameId) {
+            db.collection("players").where("gameId", "==", gameId).onSnapshot(snapshot => {
+                const playerList = document.getElementById("playerList");
+                playerList.innerHTML = "";
+                snapshot.forEach(doc => {
+                    const player = doc.data();
+                    const timeSinceLastActive = Date.now() - (player.lastActive || 0);
+                    let statusIndicator = "🟢 Active";
+                    if (timeSinceLastActive > 30000) statusIndicator = "🟡 Dormant";
+                    if (timeSinceLastActive > 60000) statusIndicator = "🔴 Disconnected";
+                    
+                    console.log(`Player ${player.name} - Last Active: ${player.lastActive}, Status: ${statusIndicator}`);
+                    
+                    const li = document.createElement("li");
+                    li.textContent = `${player.name} - ${statusIndicator}`;
+                    li.classList.add("status-indicator");
+                    
+                    const removeBtn = document.createElement("button");
+                    removeBtn.textContent = "Remove";
+                    removeBtn.onclick = async () => {
+                        await db.collection("players").doc(doc.id).delete();
+                    };
+                    
+                    li.appendChild(removeBtn);
+                    playerList.appendChild(li);
+                });
+            });
+        }
+
+        document.getElementById("createGameBtn").addEventListener("click", async () => {
+            currentGameId = Math.floor(10000 + Math.random() * 90000).toString();
+            await db.collection("games").doc(currentGameId).set({ uuid: currentGameId, createdAt: new Date() });
+            document.getElementById("gameCode").innerText = currentGameId;
+            document.getElementById("endGameBtn").style.display = "inline";
+            listenForPlayers(currentGameId);
+            setInterval(updateHostStatus, 10000);
+        });
+        
+        document.getElementById("existingGameBtn").addEventListener("click", () => {
+            document.getElementById("existingGameInput").style.display = "inline";
+            document.getElementById("joinExistingGameBtn").style.display = "inline";
+        });
+
+        document.getElementById("joinExistingGameBtn").addEventListener("click", async () => {
+            const gameId = document.getElementById("existingGameInput").value.trim();
+            if (!gameId) return alert("Enter a valid Game Code");
+            
+            const gameRef = await db.collection("games").doc(gameId).get();
+            if (!gameRef.exists) return alert("Game does not exist");
+            
+            currentGameId = gameId;
+            document.getElementById("gameCode").innerText = currentGameId;
+            document.getElementById("endGameBtn").style.display = "inline";
+            listenForPlayers(currentGameId);
+            setInterval(updateHostStatus, 10000);
+        });
+    </script>
+</body>
+</html>
